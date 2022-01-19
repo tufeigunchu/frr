@@ -48,6 +48,7 @@
 #include "lib_errors.h"
 #include "northbound_cli.h"
 #include "printfrr.h"
+#include "json.h"
 
 #include <arpa/telnet.h>
 #include <termios.h>
@@ -280,13 +281,28 @@ done:
 	return len;
 }
 
+int vty_json(struct vty *vty, struct json_object *json)
+{
+	const char *text;
+
+	if (!json)
+		return CMD_SUCCESS;
+
+	text = json_object_to_json_string_ext(
+		json, JSON_C_TO_STRING_PRETTY | JSON_C_TO_STRING_NOSLASHESCAPE);
+	vty_out(vty, "%s\n", text);
+	json_object_free(json);
+
+	return CMD_SUCCESS;
+}
+
 /* Output current time to the vty. */
 void vty_time_print(struct vty *vty, int cr)
 {
-	char buf[QUAGGA_TIMESTAMP_LEN];
+	char buf[FRR_TIMESTAMP_LEN];
 
-	if (quagga_timestamp(0, buf, sizeof(buf)) == 0) {
-		zlog_info("quagga_timestamp error");
+	if (frr_timestamp(0, buf, sizeof(buf)) == 0) {
+		zlog_info("frr_timestamp error");
 		return;
 	}
 	if (cr)
@@ -2998,7 +3014,7 @@ static void vty_save_cwd(void)
 		 * the whole world is coming down around us
 		 * Hence not worrying about it too much.
 		 */
-		if (!chdir(SYSCONFDIR)) {
+		if (chdir(SYSCONFDIR)) {
 			flog_err_sys(EC_LIB_SYSTEM_CALL,
 				     "Failure to chdir to %s, errno: %d",
 				     SYSCONFDIR, errno);

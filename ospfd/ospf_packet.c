@@ -398,7 +398,7 @@ static int ospf_make_md5_digest(struct ospf_interface *oi,
 	/* We do this here so when we dup a packet, we don't have to
 	   waste CPU rewriting other headers.
 
-	   Note that quagga_time /deliberately/ is not used here */
+	   Note that frr_time /deliberately/ is not used here */
 	t = (time(NULL) & 0xFFFFFFFF);
 	if (t > oi->crypt_seqnum)
 		oi->crypt_seqnum = t;
@@ -3012,7 +3012,7 @@ static enum ospf_read_return_enum ospf_read_helper(struct ospf *ospf)
 		}
 	}
 
-	if (ospf->vrf_id == VRF_DEFAULT && ospf->vrf_id != ifp->vrf_id) {
+	if (ospf->vrf_id == VRF_DEFAULT && ospf->vrf_id != ifp->vrf->vrf_id) {
 		/*
 		 * We may have a situation where l3mdev_accept == 1
 		 * let's just kindly drop the packet and move on.

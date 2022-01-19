@@ -72,7 +72,8 @@ void table_manager_enable(struct zebra_vrf *zvrf)
 
 	if (zvrf->tbl_mgr)
 		return;
-	if (!vrf_is_backend_netns() && zvrf_id(zvrf) != VRF_DEFAULT) {
+	if (!vrf_is_backend_netns()
+	    && strcmp(zvrf_name(zvrf), VRF_DEFAULT_NAME)) {
 		struct zebra_vrf *def = zebra_vrf_lookup_by_id(VRF_DEFAULT);
 
 		if (def)
@@ -82,7 +83,6 @@ void table_manager_enable(struct zebra_vrf *zvrf)
 	zvrf->tbl_mgr = XCALLOC(MTYPE_TM_TABLE, sizeof(struct table_manager));
 	zvrf->tbl_mgr->lc_list = list_new();
 	zvrf->tbl_mgr->lc_list->del = delete_table_chunk;
-	hook_register(zserv_client_close, release_daemon_table_chunks);
 }
 
 /**
@@ -285,7 +285,8 @@ void table_manager_disable(struct zebra_vrf *zvrf)
 {
 	if (!zvrf->tbl_mgr)
 		return;
-	if (!vrf_is_backend_netns() && zvrf_id(zvrf) != VRF_DEFAULT) {
+	if (!vrf_is_backend_netns()
+	    && strcmp(zvrf_name(zvrf), VRF_DEFAULT_NAME)) {
 		zvrf->tbl_mgr = NULL;
 		return;
 	}

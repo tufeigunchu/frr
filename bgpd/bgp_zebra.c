@@ -65,6 +65,8 @@
 #include "bgpd/bgp_evpn_mh.h"
 #include "bgpd/bgp_mac.h"
 #include "bgpd/bgp_trace.h"
+#include "bgpd/bgp_community.h"
+#include "bgpd/bgp_lcommunity.h"
 
 /* All information about zebra. */
 struct zclient *zclient = NULL;
@@ -206,10 +208,11 @@ static int bgp_ifp_destroy(struct interface *ifp)
 {
 	struct bgp *bgp;
 
-	bgp = bgp_lookup_by_vrf_id(ifp->vrf_id);
+	bgp = ifp->vrf->info;
 
 	if (BGP_DEBUG(zebra, ZEBRA))
-		zlog_debug("Rx Intf del VRF %u IF %s", ifp->vrf_id, ifp->name);
+		zlog_debug("Rx Intf del VRF %u IF %s", ifp->vrf->vrf_id,
+			   ifp->name);
 
 	if (bgp) {
 		bgp_update_interface_nbrs(bgp, ifp, NULL);
@@ -228,12 +231,13 @@ static int bgp_ifp_up(struct interface *ifp)
 	struct listnode *node, *nnode;
 	struct bgp *bgp;
 
-	bgp = bgp_lookup_by_vrf_id(ifp->vrf_id);
+	bgp = ifp->vrf->info;
 
 	bgp_mac_add_mac_entry(ifp);
 
 	if (BGP_DEBUG(zebra, ZEBRA))
-		zlog_debug("Rx Intf up VRF %u IF %s", ifp->vrf_id, ifp->name);
+		zlog_debug("Rx Intf up VRF %u IF %s", ifp->vrf->vrf_id,
+			   ifp->name);
 
 	if (!bgp)
 		return 0;
@@ -258,12 +262,13 @@ static int bgp_ifp_down(struct interface *ifp)
 	struct bgp *bgp;
 	struct peer *peer;
 
-	bgp = bgp_lookup_by_vrf_id(ifp->vrf_id);
+	bgp = ifp->vrf->info;
 
 	bgp_mac_del_mac_entry(ifp);
 
 	if (BGP_DEBUG(zebra, ZEBRA))
-		zlog_debug("Rx Intf down VRF %u IF %s", ifp->vrf_id, ifp->name);
+		zlog_debug("Rx Intf down VRF %u IF %s", ifp->vrf->vrf_id,
+			   ifp->name);
 
 	if (!bgp)
 		return 0;
@@ -875,7 +880,7 @@ bool bgp_zebra_nexthop_set(union sockunion *local, union sockunion *remote,
 			 * It's fine to not have a v6 LL when using
 			 * update-source loopback/vrf
 			 */
-			if (!v6_ll_avail && if_is_loopback_or_vrf(ifp))
+			if (!v6_ll_avail && if_is_loopback(ifp))
 				v6_ll_avail = true;
 		} else
 		/* Link-local address. */
@@ -1249,6 +1254,7 @@ void bgp_zebra_announce(struct bgp_dest *dest, const struct prefix *p,
 	uint8_t distance;
 	struct peer *peer;
 	struct bgp_path_info *mpinfo;
+	struct bgp *bgp_orig;
 	uint32_t metric;
 	struct attr local_attr;
 	struct bgp_path_info local_info;
@@ -1412,13 +1418,13 @@ void bgp_zebra_announce(struct bgp_dest *dest, const struct prefix *p,
 			}
 		}
 
+		BGP_ORIGINAL_UPDATE(bgp_orig, mpinfo, bgp);
+
 		if (nh_family == AF_INET) {
 			nh_updated = update_ipv4nh_for_route_install(
-					nh_othervrf,
-					nh_othervrf ?
-					info->extra->bgp_orig : bgp,
-					&mpinfo_cp->attr->nexthop,
-					mpinfo_cp->attr, is_evpn, api_nh);
+				nh_othervrf, bgp_orig,
+				&mpinfo_cp->attr->nexthop, mpinfo_cp->attr,
+				is_evpn, api_nh);
 		} else {
 			ifindex_t ifindex = IFINDEX_INTERNAL;
 			struct in6_addr *nexthop;
@@ -1428,18 +1434,13 @@ void bgp_zebra_announce(struct bgp_dest *dest, const struct prefix *p,
 
 			if (!nexthop)
 				nh_updated = update_ipv4nh_for_route_install(
-					nh_othervrf,
-					nh_othervrf ? info->extra->bgp_orig
-						    : bgp,
+					nh_othervrf, bgp_orig,
 					&mpinfo_cp->attr->nexthop,
 					mpinfo_cp->attr, is_evpn, api_nh);
 			else
 				nh_updated = update_ipv6nh_for_route_install(
-					nh_othervrf,
-					nh_othervrf ? info->extra->bgp_orig
-						    : bgp,
-					nexthop, ifindex, mpinfo, info, is_evpn,
-					api_nh);
+					nh_othervrf, bgp_orig, nexthop, ifindex,
+					mpinfo, info, is_evpn, api_nh);
 		}
 
 		/* Did we get proper nexthop info to update zebra? */
@@ -2529,34 +2530,26 @@ static int bgp_zebra_route_notify_owner(int command, struct zclient *zclient,
 	case ZAPI_ROUTE_INSTALLED:
 		new_select = NULL;
 		/* Clear the flags so that route can be processed */
-		if (CHECK_FLAG(dest->flags,
-			       BGP_NODE_FIB_INSTALL_PENDING)) {
-			UNSET_FLAG(dest->flags,
-				   BGP_NODE_FIB_INSTALL_PENDING);
-			SET_FLAG(dest->flags, BGP_NODE_FIB_INSTALLED);
-			if (BGP_DEBUG(zebra, ZEBRA))
-				zlog_debug("route %pRN : INSTALLED", dest);
-			/* Find the best route */
-			for (pi = dest->info; pi; pi = pi->next) {
-				/* Process aggregate route */
-				bgp_aggregate_increment(bgp, &p, pi,
-							afi, safi);
-				if (CHECK_FLAG(pi->flags,
-					       BGP_PATH_SELECTED))
-					new_select = pi;
-			}
-			/* Advertise the route */
-			if (new_select)
-				group_announce_route(bgp, afi, safi,
-						     dest, new_select);
-			else {
-				flog_err(EC_BGP_INVALID_ROUTE,
-					 "selected route %pRN not found",
-					 dest);
+		UNSET_FLAG(dest->flags, BGP_NODE_FIB_INSTALL_PENDING);
+		SET_FLAG(dest->flags, BGP_NODE_FIB_INSTALLED);
+		if (BGP_DEBUG(zebra, ZEBRA))
+			zlog_debug("route %pRN : INSTALLED", dest);
+		/* Find the best route */
+		for (pi = dest->info; pi; pi = pi->next) {
+			/* Process aggregate route */
+			bgp_aggregate_increment(bgp, &p, pi, afi, safi);
+			if (CHECK_FLAG(pi->flags, BGP_PATH_SELECTED))
+				new_select = pi;
+		}
+		/* Advertise the route */
+		if (new_select)
+			group_announce_route(bgp, afi, safi, dest, new_select);
+		else {
+			flog_err(EC_BGP_INVALID_ROUTE,
+				 "selected route %pRN not found", dest);
 
-				bgp_dest_unlock_node(dest);
-				return -1;
-			}
+			bgp_dest_unlock_node(dest);
+			return -1;
 		}
 		break;
 	case ZAPI_ROUTE_REMOVED:
@@ -2569,15 +2562,34 @@ static int bgp_zebra_route_notify_owner(int command, struct zclient *zclient,
 			zlog_debug("route %pRN: Removed from Fib", dest);
 		break;
 	case ZAPI_ROUTE_FAIL_INSTALL:
+		new_select = NULL;
 		if (BGP_DEBUG(zebra, ZEBRA))
 			zlog_debug("route: %pRN Failed to Install into Fib",
 				   dest);
+		UNSET_FLAG(dest->flags, BGP_NODE_FIB_INSTALL_PENDING);
+		UNSET_FLAG(dest->flags, BGP_NODE_FIB_INSTALLED);
+		for (pi = bgp_dest_get_bgp_path_info(dest); pi; pi = pi->next) {
+			if (CHECK_FLAG(pi->flags, BGP_PATH_SELECTED))
+				new_select = pi;
+		}
+		if (new_select)
+			group_announce_route(bgp, afi, safi, dest, new_select);
 		/* Error will be logged by zebra module */
 		break;
 	case ZAPI_ROUTE_BETTER_ADMIN_WON:
 		if (BGP_DEBUG(zebra, ZEBRA))
 			zlog_debug("route: %pRN removed due to better admin won",
 				   dest);
+		new_select = NULL;
+		UNSET_FLAG(dest->flags, BGP_NODE_FIB_INSTALL_PENDING);
+		UNSET_FLAG(dest->flags, BGP_NODE_FIB_INSTALLED);
+		for (pi = bgp_dest_get_bgp_path_info(dest); pi; pi = pi->next) {
+			bgp_aggregate_decrement(bgp, &p, pi, afi, safi);
+			if (CHECK_FLAG(pi->flags, BGP_PATH_SELECTED))
+				new_select = pi;
+		}
+		if (new_select)
+			group_announce_route(bgp, afi, safi, dest, new_select);
 		/* No action required */
 		break;
 	case ZAPI_ROUTE_REMOVE_FAIL:
@@ -3103,9 +3115,10 @@ static int bgp_ifp_create(struct interface *ifp)
 	struct bgp *bgp;
 
 	if (BGP_DEBUG(zebra, ZEBRA))
-		zlog_debug("Rx Intf add VRF %u IF %s", ifp->vrf_id, ifp->name);
+		zlog_debug("Rx Intf add VRF %u IF %s", ifp->vrf->vrf_id,
+			   ifp->name);
 
-	bgp = bgp_lookup_by_vrf_id(ifp->vrf_id);
+	bgp = ifp->vrf->info;
 	if (!bgp)
 		return 0;
 

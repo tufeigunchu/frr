@@ -41,7 +41,7 @@
 
 DEFPY_YANG_NOSH(
 	route_map, route_map_cmd,
-	"route-map WORD$name <deny|permit>$action (1-65535)$sequence",
+	"route-map RMAP_NAME$name <deny|permit>$action (1-65535)$sequence",
 	ROUTE_MAP_CMD_STR
 	ROUTE_MAP_OP_CMD_STR
 	ROUTE_MAP_SEQUENCE_CMD_STR)
@@ -71,7 +71,7 @@ DEFPY_YANG_NOSH(
 
 DEFPY_YANG(
 	no_route_map_all, no_route_map_all_cmd,
-	"no route-map WORD$name",
+	"no route-map RMAP_NAME$name",
 	NO_STR
 	ROUTE_MAP_CMD_STR)
 {
@@ -86,7 +86,7 @@ DEFPY_YANG(
 
 DEFPY_YANG(
 	no_route_map, no_route_map_cmd,
-	"no route-map WORD$name <deny|permit>$action (1-65535)$sequence",
+	"no route-map RMAP_NAME$name <deny|permit>$action (1-65535)$sequence",
 	NO_STR
 	ROUTE_MAP_CMD_STR
 	ROUTE_MAP_OP_CMD_STR
@@ -166,7 +166,7 @@ DEFPY_YANG(
 
 DEFPY_YANG(
 	match_ip_address, match_ip_address_cmd,
-	"match ip address WORD$name",
+	"match ip address ACCESSLIST4_NAME$name",
 	MATCH_STR
 	IP_STR
 	"Match address of route\n"
@@ -186,7 +186,7 @@ DEFPY_YANG(
 
 DEFPY_YANG(
 	no_match_ip_address, no_match_ip_address_cmd,
-	"no match ip address [WORD]",
+	"no match ip address [ACCESSLIST4_NAME]",
 	NO_STR
 	MATCH_STR
 	IP_STR
@@ -243,7 +243,7 @@ DEFPY_YANG(
 
 DEFPY_YANG(
 	match_ip_next_hop, match_ip_next_hop_cmd,
-	"match ip next-hop WORD$name",
+	"match ip next-hop ACCESSLIST4_NAME$name",
 	MATCH_STR
 	IP_STR
 	"Match next-hop address of route\n"
@@ -263,7 +263,7 @@ DEFPY_YANG(
 
 DEFPY_YANG(
 	no_match_ip_next_hop, no_match_ip_next_hop_cmd,
-	"no match ip next-hop [WORD]",
+	"no match ip next-hop [ACCESSLIST4_NAME]",
 	NO_STR
 	MATCH_STR
 	IP_STR
@@ -358,7 +358,7 @@ DEFPY_YANG(
 
 DEFPY_YANG(
 	match_ipv6_address, match_ipv6_address_cmd,
-	"match ipv6 address WORD$name",
+	"match ipv6 address ACCESSLIST6_NAME$name",
 	MATCH_STR
 	IPV6_STR
 	"Match IPv6 address of route\n"
@@ -378,7 +378,7 @@ DEFPY_YANG(
 
 DEFPY_YANG(
 	no_match_ipv6_address, no_match_ipv6_address_cmd,
-	"no match ipv6 address [WORD]",
+	"no match ipv6 address [ACCESSLIST6_NAME]",
 	NO_STR
 	MATCH_STR
 	IPV6_STR
@@ -550,26 +550,28 @@ void route_map_condition_show(struct vty *vty, const struct lyd_node *dnode,
 		vty_out(vty, " match interface %s\n",
 			yang_dnode_get_string(
 				dnode, "./rmap-match-condition/interface"));
-	} else if (IS_MATCH_IPv4_ADDRESS_LIST(condition)
-		   || IS_MATCH_IPv4_NEXTHOP_LIST(condition)) {
-		acl = NULL;
-		if ((ln = yang_dnode_get(dnode,
-					 "./rmap-match-condition/list-name"))
-		    != NULL)
-			acl = yang_dnode_get_string(ln, NULL);
-
-		assert(acl);
-
-		if (IS_MATCH_IPv4_ADDRESS_LIST(condition))
-			vty_out(vty, " match ip address %s\n", acl);
-		else
-			vty_out(vty, " match ip next-hop %s\n", acl);
+	} else if (IS_MATCH_IPv4_ADDRESS_LIST(condition)) {
+		vty_out(vty, " match ip address %s\n",
+			yang_dnode_get_string(
+				dnode, "./rmap-match-condition/list-name"));
+	} else if (IS_MATCH_IPv4_NEXTHOP_LIST(condition)) {
+		vty_out(vty, " match ip next-hop %s\n",
+			yang_dnode_get_string(
+				dnode, "./rmap-match-condition/list-name"));
+	} else if (IS_MATCH_IPv6_NEXTHOP_LIST(condition)) {
+		vty_out(vty, " match ipv6 next-hop %s\n",
+			yang_dnode_get_string(
+				dnode, "./rmap-match-condition/list-name"));
 	} else if (IS_MATCH_IPv4_PREFIX_LIST(condition)) {
 		vty_out(vty, " match ip address prefix-list %s\n",
 			yang_dnode_get_string(
 				dnode, "./rmap-match-condition/list-name"));
 	} else if (IS_MATCH_IPv4_NEXTHOP_PREFIX_LIST(condition)) {
 		vty_out(vty, " match ip next-hop prefix-list %s\n",
+			yang_dnode_get_string(
+				dnode, "./rmap-match-condition/list-name"));
+	} else if (IS_MATCH_IPv6_NEXTHOP_PREFIX_LIST(condition)) {
+		vty_out(vty, " match ipv6 next-hop prefix-list %s\n",
 			yang_dnode_get_string(
 				dnode, "./rmap-match-condition/list-name"));
 	} else if (IS_MATCH_IPv6_ADDRESS_LIST(condition)) {
@@ -712,91 +714,47 @@ void route_map_condition_show(struct vty *vty, const struct lyd_node *dnode,
 				dnode,
 				"./rmap-match-condition/frr-bgp-route-map:list-name"));
 	} else if (IS_MATCH_ROUTE_SRC(condition)) {
-		acl = NULL;
-		if ((ln = yang_dnode_get(
-			     dnode,
-			     "./rmap-match-condition/frr-bgp-route-map:list-name"))
-		    != NULL)
-			acl = yang_dnode_get_string(ln, NULL);
-
-		assert(acl);
-
-		vty_out(vty, " match ip route-source %s\n", acl);
+		vty_out(vty, " match ip route-source %s\n",
+			yang_dnode_get_string(
+				dnode,
+				"./rmap-match-condition/frr-bgp-route-map:list-name"));
 	} else if (IS_MATCH_ROUTE_SRC_PL(condition)) {
 		vty_out(vty, " match ip route-source prefix-list %s\n",
 			yang_dnode_get_string(
 				dnode,
 				"./rmap-match-condition/frr-bgp-route-map:list-name"));
-	} else if (IS_MATCH_ROUTE_SRC(condition)) {
-		acl = NULL;
-		if ((ln = yang_dnode_get(
-			     dnode,
-			     "./rmap-match-condition/frr-bgp-route-map:list-name"))
-		    != NULL)
-			acl = yang_dnode_get_string(ln, NULL);
-
-		assert(acl);
-
-		vty_out(vty, " match ip route-source %s\n", acl);
 	} else if (IS_MATCH_COMMUNITY(condition)) {
-		acl = NULL;
-		if ((ln = yang_dnode_get(
-				 dnode,
-				 "./rmap-match-condition/frr-bgp-route-map:comm-list/comm-list-name"))
-			!= NULL) {
-			acl = yang_dnode_get_string(ln, NULL);
-
-			if (true
-			    == yang_dnode_get_bool(
-				    dnode,
-				    "./rmap-match-condition/frr-bgp-route-map:comm-list/comm-list-name-exact-match"))
-				vty_out(vty,
-					" match community %s exact-match\n",
-					acl);
-			else
-				vty_out(vty, " match community %s\n", acl);
-		}
-
-		assert(acl);
+		vty_out(vty, " match community %s",
+			yang_dnode_get_string(
+				dnode,
+				"./rmap-match-condition/frr-bgp-route-map:comm-list/comm-list-name"));
+		if (yang_dnode_get_bool(
+			    dnode,
+			    "./rmap-match-condition/frr-bgp-route-map:comm-list/comm-list-name-exact-match"))
+			vty_out(vty, " exact-match");
+		vty_out(vty, "\n");
 	} else if (IS_MATCH_LCOMMUNITY(condition)) {
-		acl = NULL;
-		if ((ln = yang_dnode_get(
-				 dnode,
-				 "./rmap-match-condition/frr-bgp-route-map:comm-list/comm-list-name"))
-			!= NULL) {
-			acl = yang_dnode_get_string(ln, NULL);
-
-			if (true
-			    == yang_dnode_get_bool(
-				    dnode,
-				    "./rmap-match-condition/frr-bgp-route-map:comm-list/comm-list-name-exact-match"))
-				vty_out(vty,
-					" match large-community %s exact-match\n",
-					acl);
-			else
-				vty_out(vty, " match large-community %s\n",
-					acl);
-		}
-
-		assert(acl);
+		vty_out(vty, " match large-community %s",
+			yang_dnode_get_string(
+				dnode,
+				"./rmap-match-condition/frr-bgp-route-map:comm-list/comm-list-name"));
+		if (yang_dnode_get_bool(
+			    dnode,
+			    "./rmap-match-condition/frr-bgp-route-map:comm-list/comm-list-name-exact-match"))
+			vty_out(vty, " exact-match");
+		vty_out(vty, "\n");
 	} else if (IS_MATCH_EXTCOMMUNITY(condition)) {
-		acl = NULL;
-		if ((ln = yang_dnode_get(
-				 dnode,
-				 "./rmap-match-condition/frr-bgp-route-map:comm-list/comm-list-name"))
-			!= NULL)
-			acl = yang_dnode_get_string(ln, NULL);
-
-		assert(acl);
-
-		vty_out(vty, " match extcommunity %s\n", acl);
+		vty_out(vty, " match extcommunity %s\n",
+			yang_dnode_get_string(
+				dnode,
+				"./rmap-match-condition/frr-bgp-route-map:comm-list/comm-list-name"));
 	} else if (IS_MATCH_IPV4_NH(condition)) {
-		vty_out(vty, " match ip next-hop %s\n",
+		vty_out(vty, " match ip next-hop address %s\n",
 			yang_dnode_get_string(
 				dnode,
 				"./rmap-match-condition/frr-bgp-route-map:ipv4-address"));
 	} else if (IS_MATCH_IPV6_NH(condition)) {
-		vty_out(vty, " match ipv6 next-hop %s\n",
+		vty_out(vty, " match ipv6 next-hop address %s\n",
 			yang_dnode_get_string(
 				dnode,
 				"./rmap-match-condition/frr-bgp-route-map:ipv6-address"));
@@ -1440,7 +1398,7 @@ void route_map_description_show(struct vty *vty, const struct lyd_node *dnode,
 
 DEFPY_YANG(
 	route_map_optimization, route_map_optimization_cmd,
-	"[no] route-map WORD$name optimization",
+	"[no] route-map RMAP_NAME$name optimization",
 	NO_STR
 	ROUTE_MAP_CMD_STR
 	"Configure route-map optimization\n")

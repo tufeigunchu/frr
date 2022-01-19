@@ -666,9 +666,7 @@ static void bfdd_sessions_enable_interface(struct interface *ifp)
 	struct bfd_session *bs;
 	struct vrf *vrf;
 
-	vrf = vrf_lookup_by_id(ifp->vrf_id);
-	if (!vrf)
-		return;
+	vrf = ifp->vrf;
 
 	TAILQ_FOREACH(bso, &bglobal.bg_obslist, bso_entry) {
 		bs = bso->bso_bs;
@@ -723,11 +721,6 @@ void bfdd_sessions_enable_vrf(struct vrf *vrf)
 	/* it may affect configs without interfaces */
 	TAILQ_FOREACH(bso, &bglobal.bg_obslist, bso_entry) {
 		bs = bso->bso_bs;
-		/* update name */
-		if (bs->vrf && bs->vrf == vrf) {
-			if (!strmatch(bs->key.vrfname, vrf->name))
-				bfd_session_update_vrf_name(bs, vrf);
-		}
 		if (bs->vrf)
 			continue;
 		if (bs->key.vrfname[0] &&
@@ -767,8 +760,8 @@ void bfdd_sessions_disable_vrf(struct vrf *vrf)
 static int bfd_ifp_destroy(struct interface *ifp)
 {
 	if (bglobal.debug_zebra)
-		zlog_debug("zclient: delete interface %s (VRF %u)", ifp->name,
-			   ifp->vrf_id);
+		zlog_debug("zclient: delete interface %s (VRF %s(%u))",
+			   ifp->name, ifp->vrf->name, ifp->vrf->vrf_id);
 
 	bfdd_sessions_disable_interface(ifp);
 
@@ -837,8 +830,8 @@ static int bfdd_interface_address_update(ZAPI_CALLBACK_ARGS)
 static int bfd_ifp_create(struct interface *ifp)
 {
 	if (bglobal.debug_zebra)
-		zlog_debug("zclient: add interface %s (VRF %u)", ifp->name,
-			   ifp->vrf_id);
+		zlog_debug("zclient: add interface %s (VRF %s(%u))", ifp->name,
+			   ifp->vrf->name, ifp->vrf->vrf_id);
 	bfdd_sessions_enable_interface(ifp);
 
 	return 0;

@@ -70,43 +70,12 @@ DEFPY_YANG_NOSH(router_isis, router_isis_cmd,
 	return ret;
 }
 
-struct if_iter {
-	struct vty *vty;
-	const char *tag;
-};
-
-static int if_iter_cb(const struct lyd_node *dnode, void *arg)
-{
-	struct if_iter *iter = arg;
-	const char *tag;
-
-	if (!yang_dnode_exists(dnode, "frr-isisd:isis/area-tag"))
-		return YANG_ITER_CONTINUE;
-
-	tag = yang_dnode_get_string(dnode, "frr-isisd:isis/area-tag");
-	if (strmatch(tag, iter->tag)) {
-		char xpath[XPATH_MAXLEN];
-		const char *name = yang_dnode_get_string(dnode, "name");
-		const char *vrf = yang_dnode_get_string(dnode, "vrf");
-
-		snprintf(
-			xpath, XPATH_MAXLEN,
-			"/frr-interface:lib/interface[name='%s'][vrf='%s']/frr-isisd:isis",
-			name, vrf);
-		nb_cli_enqueue_change(iter->vty, xpath, NB_OP_DESTROY, NULL);
-	}
-
-	return YANG_ITER_CONTINUE;
-}
-
 DEFPY_YANG(no_router_isis, no_router_isis_cmd,
 	   "no router isis WORD$tag [vrf NAME$vrf_name]",
 	   NO_STR ROUTER_STR
 	   "ISO IS-IS\n"
 	   "ISO Routing area tag\n" VRF_CMD_HELP_STR)
 {
-	struct if_iter iter;
-
 	if (!vrf_name)
 		vrf_name = VRF_DEFAULT_NAME;
 
@@ -117,12 +86,6 @@ DEFPY_YANG(no_router_isis, no_router_isis_cmd,
 		vty_out(vty, "ISIS area %s not found.\n", tag);
 		return CMD_ERR_NOTHING_TODO;
 	}
-
-	iter.vty = vty;
-	iter.tag = tag;
-
-	yang_dnode_iterate(if_iter_cb, &iter, vty->candidate_config->dnode,
-			   "/frr-interface:lib/interface[vrf='%s']", vrf_name);
 
 	nb_cli_enqueue_change(vty, ".", NB_OP_DESTROY, NULL);
 
@@ -164,45 +127,11 @@ DEFPY_YANG(ip_router_isis, ip_router_isis_cmd,
 	   "IS-IS routing protocol\n"
 	   "Routing process tag\n")
 {
-	char inst_xpath[XPATH_MAXLEN];
-	const struct lyd_node *if_dnode, *inst_dnode;
-	const char *circ_type = NULL;
-	const char *vrf_name;
-	struct interface *ifp;
-
-	if_dnode = yang_dnode_get(vty->candidate_config->dnode, VTY_CURR_XPATH);
-	if (!if_dnode) {
-		vty_out(vty, "%% Failed to get iface dnode in candidate DB\n");
-		return CMD_WARNING_CONFIG_FAILED;
-	}
-
-	vrf_name = yang_dnode_get_string(if_dnode, "vrf");
-
-	snprintf(inst_xpath, XPATH_MAXLEN,
-		 "/frr-isisd:isis/instance[area-tag='%s'][vrf='%s']", tag,
-		 vrf_name);
-
-	/* if instance exists then inherit its type, create it otherwise */
-	inst_dnode = yang_dnode_get(vty->candidate_config->dnode, inst_xpath);
-	if (inst_dnode)
-		circ_type = yang_dnode_get_string(inst_dnode, "is-type");
-	else
-		nb_cli_enqueue_change(vty, inst_xpath, NB_OP_CREATE, NULL);
-
 	nb_cli_enqueue_change(vty, "./frr-isisd:isis", NB_OP_CREATE, NULL);
 	nb_cli_enqueue_change(vty, "./frr-isisd:isis/area-tag", NB_OP_MODIFY,
 			      tag);
 	nb_cli_enqueue_change(vty, "./frr-isisd:isis/ipv4-routing",
 			      NB_OP_MODIFY, "true");
-	if (circ_type)
-		nb_cli_enqueue_change(vty, "./frr-isisd:isis/circuit-type",
-				      NB_OP_MODIFY, circ_type);
-
-	/* check if the interface is a loopback and if so set it as passive */
-	ifp = nb_running_get_entry(NULL, VTY_CURR_XPATH, false);
-	if (ifp && if_is_loopback_or_vrf(ifp))
-		nb_cli_enqueue_change(vty, "./frr-isisd:isis/passive",
-				      NB_OP_MODIFY, "true");
 
 	return nb_cli_apply_changes(vty, NULL);
 }
@@ -221,45 +150,11 @@ DEFPY_YANG(ip6_router_isis, ip6_router_isis_cmd,
 	   "IS-IS routing protocol\n"
 	   "Routing process tag\n")
 {
-	char inst_xpath[XPATH_MAXLEN];
-	const struct lyd_node *if_dnode, *inst_dnode;
-	const char *circ_type = NULL;
-	const char *vrf_name;
-	struct interface *ifp;
-
-	if_dnode = yang_dnode_get(vty->candidate_config->dnode, VTY_CURR_XPATH);
-	if (!if_dnode) {
-		vty_out(vty, "%% Failed to get iface dnode in candidate DB\n");
-		return CMD_WARNING_CONFIG_FAILED;
-	}
-
-	vrf_name = yang_dnode_get_string(if_dnode, "vrf");
-
-	snprintf(inst_xpath, XPATH_MAXLEN,
-		 "/frr-isisd:isis/instance[area-tag='%s'][vrf='%s']", tag,
-		 vrf_name);
-
-	/* if instance exists then inherit its type, create it otherwise */
-	inst_dnode = yang_dnode_get(vty->candidate_config->dnode, inst_xpath);
-	if (inst_dnode)
-		circ_type = yang_dnode_get_string(inst_dnode, "is-type");
-	else
-		nb_cli_enqueue_change(vty, inst_xpath, NB_OP_CREATE, NULL);
-
 	nb_cli_enqueue_change(vty, "./frr-isisd:isis", NB_OP_CREATE, NULL);
 	nb_cli_enqueue_change(vty, "./frr-isisd:isis/area-tag", NB_OP_MODIFY,
 			      tag);
 	nb_cli_enqueue_change(vty, "./frr-isisd:isis/ipv6-routing",
 			      NB_OP_MODIFY, "true");
-	if (circ_type)
-		nb_cli_enqueue_change(vty, "./frr-isisd:isis/circuit-type",
-				      NB_OP_MODIFY, circ_type);
-
-	/* check if the interface is a loopback and if so set it as passive */
-	ifp = nb_running_get_entry(NULL, VTY_CURR_XPATH, false);
-	if (ifp && if_is_loopback_or_vrf(ifp))
-		nb_cli_enqueue_change(vty, "./frr-isisd:isis/passive",
-				      NB_OP_MODIFY, "true");
 
 	return nb_cli_apply_changes(vty, NULL);
 }
@@ -1116,7 +1011,7 @@ void cli_show_isis_spf_ietf_backoff(struct vty *vty,
  * XPath: /frr-isisd:isis/instance/spf/prefix-priorities/medium/access-list-name
  */
 DEFPY_YANG(spf_prefix_priority, spf_prefix_priority_cmd,
-      "spf prefix-priority <critical|high|medium>$priority WORD$acl_name",
+      "spf prefix-priority <critical|high|medium>$priority ACCESSLIST_NAME$acl_name",
       "SPF configuration\n"
       "Configure a prefix priority list\n"
       "Specify critical priority prefixes\n"
@@ -1134,7 +1029,7 @@ DEFPY_YANG(spf_prefix_priority, spf_prefix_priority_cmd,
 }
 
 DEFPY_YANG(no_spf_prefix_priority, no_spf_prefix_priority_cmd,
-      "no spf prefix-priority <critical|high|medium>$priority [WORD]",
+      "no spf prefix-priority <critical|high|medium>$priority [ACCESSLIST_NAME]",
       NO_STR
       "SPF configuration\n"
       "Configure a prefix priority list\n"
@@ -1245,6 +1140,43 @@ void cli_show_isis_mpls_te_router_addr(struct vty *vty,
 		yang_dnode_get_string(dnode, NULL));
 }
 
+/*
+ * XPath: /frr-isisd:isis/instance/mpls-te/router-address-v6
+ */
+DEFPY_YANG(isis_mpls_te_router_addr_v6, isis_mpls_te_router_addr_v6_cmd,
+      "mpls-te router-address ipv6 X:X::X:X",
+      MPLS_TE_STR
+      "Stable IP address of the advertising router\n"
+      "IPv6 address\n"
+      "MPLS-TE router address in IPv6 address format\n")
+{
+	nb_cli_enqueue_change(vty, "./mpls-te/router-address-v6", NB_OP_MODIFY,
+			      ipv6_str);
+
+	return nb_cli_apply_changes(vty, NULL);
+}
+
+DEFPY_YANG(no_isis_mpls_te_router_addr_v6, no_isis_mpls_te_router_addr_v6_cmd,
+      "no mpls-te router-address ipv6 [X:X::X:X]",
+      NO_STR MPLS_TE_STR
+      "Delete IP address of the advertising router\n"
+      "IPv6 address\n"
+      "MPLS-TE router address in IPv6 address format\n")
+{
+	nb_cli_enqueue_change(vty, "./mpls-te/router-address-v6", NB_OP_DESTROY,
+			      NULL);
+
+	return nb_cli_apply_changes(vty, NULL);
+}
+
+void cli_show_isis_mpls_te_router_addr_ipv6(struct vty *vty,
+					    const struct lyd_node *dnode,
+					    bool show_defaults)
+{
+	vty_out(vty, " mpls-te router-address ipv6 %s\n",
+		yang_dnode_get_string(dnode, NULL));
+}
+
 DEFPY_YANG(isis_mpls_te_inter_as, isis_mpls_te_inter_as_cmd,
       "[no] mpls-te inter-as [level-1|level-1-2|level-2-only]",
       NO_STR MPLS_TE_STR
@@ -1255,6 +1187,36 @@ DEFPY_YANG(isis_mpls_te_inter_as, isis_mpls_te_inter_as_cmd,
 {
 	vty_out(vty, "MPLS-TE Inter-AS is not yet supported\n");
 	return CMD_SUCCESS;
+}
+
+/*
+ * XPath: /frr-isisd:isis/instance/mpls-te/export
+ */
+DEFPY_YANG(isis_mpls_te_export, isis_mpls_te_export_cmd, "mpls-te export",
+      MPLS_TE_STR "Enable export of MPLS-TE Link State information\n")
+{
+	nb_cli_enqueue_change(vty, "./mpls-te/export", NB_OP_MODIFY, "true");
+
+	return nb_cli_apply_changes(vty, NULL);
+}
+
+DEFPY_YANG(no_isis_mpls_te_export, no_isis_mpls_te_export_cmd,
+      "no mpls-te export",
+      NO_STR MPLS_TE_STR
+      "Disable export of MPLS-TE  Link State information\n")
+{
+	nb_cli_enqueue_change(vty, "./mpls-te/export", NB_OP_MODIFY, "false");
+
+	return nb_cli_apply_changes(vty, NULL);
+}
+
+void cli_show_isis_mpls_te_export(struct vty *vty, const struct lyd_node *dnode,
+				  bool show_defaults)
+{
+	if (!yang_dnode_get_bool(dnode, NULL))
+		vty_out(vty, " no");
+
+	vty_out(vty, " mpls-te export\n");
 }
 
 /*
@@ -1958,7 +1920,7 @@ void cli_show_isis_frr_lfa_load_sharing(struct vty *vty,
 					const struct lyd_node *dnode,
 					bool show_defaults)
 {
-	if (!yang_dnode_get_bool(dnode, NULL))
+	if (yang_dnode_get_bool(dnode, NULL))
 		vty_out(vty, " no");
 
 	vty_out(vty, " fast-reroute load-sharing disable %s\n",
@@ -2545,41 +2507,8 @@ DEFPY_YANG(no_isis_circuit_type, no_isis_circuit_type_cmd,
       "Level-1-2 adjacencies are formed\n"
       "Level-2 only adjacencies are formed\n")
 {
-	char inst_xpath[XPATH_MAXLEN];
-	const struct lyd_node *if_dnode, *inst_dnode;
-	const char *vrf_name;
-	const char *tag;
-	const char *circ_type = NULL;
-
-	/*
-	 * Default value depends on whether the circuit is part of an area,
-	 * and the is-type of the area if there is one. So we need to do this
-	 * here.
-	 */
-	if_dnode = yang_dnode_get(vty->candidate_config->dnode, VTY_CURR_XPATH);
-	if (!if_dnode) {
-		vty_out(vty, "%% Failed to get iface dnode in candidate DB\n");
-		return CMD_WARNING_CONFIG_FAILED;
-	}
-
-	if (!yang_dnode_exists(if_dnode, "frr-isisd:isis/area-tag")) {
-		vty_out(vty, "%% ISIS is not configured on the interface\n");
-		return CMD_WARNING_CONFIG_FAILED;
-	}
-
-	vrf_name = yang_dnode_get_string(if_dnode, "vrf");
-	tag = yang_dnode_get_string(if_dnode, "frr-isisd:isis/area-tag");
-
-	snprintf(inst_xpath, XPATH_MAXLEN,
-		 "/frr-isisd:isis/instance[area-tag='%s'][vrf='%s']", tag,
-		 vrf_name);
-
-	inst_dnode = yang_dnode_get(vty->candidate_config->dnode, inst_xpath);
-	if (inst_dnode)
-		circ_type = yang_dnode_get_string(inst_dnode, "is-type");
-
 	nb_cli_enqueue_change(vty, "./frr-isisd:isis/circuit-type",
-			      NB_OP_MODIFY, circ_type);
+			      NB_OP_MODIFY, NULL);
 
 	return nb_cli_apply_changes(vty, NULL);
 }
@@ -3263,7 +3192,11 @@ void isis_cli_init(void)
 	install_element(ISIS_NODE, &no_isis_mpls_te_on_cmd);
 	install_element(ISIS_NODE, &isis_mpls_te_router_addr_cmd);
 	install_element(ISIS_NODE, &no_isis_mpls_te_router_addr_cmd);
+	install_element(ISIS_NODE, &isis_mpls_te_router_addr_v6_cmd);
+	install_element(ISIS_NODE, &no_isis_mpls_te_router_addr_v6_cmd);
 	install_element(ISIS_NODE, &isis_mpls_te_inter_as_cmd);
+	install_element(ISIS_NODE, &isis_mpls_te_export_cmd);
+	install_element(ISIS_NODE, &no_isis_mpls_te_export_cmd);
 
 	install_element(ISIS_NODE, &isis_default_originate_cmd);
 	install_element(ISIS_NODE, &isis_redistribute_cmd);

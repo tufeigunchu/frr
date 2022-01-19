@@ -81,13 +81,6 @@ typedef uint32_t as_t;
 typedef uint16_t as16_t; /* we may still encounter 16 Bit asnums */
 typedef uint16_t bgp_size_t;
 
-#define max(a, b)                                                              \
-	({                                                                     \
-		__typeof__(a) _a = (a);                                        \
-		__typeof__(b) _b = (b);                                        \
-		_a > _b ? _a : _b;                                             \
-	})
-
 enum bgp_af_index {
 	BGP_AF_START,
 	BGP_AF_IPV4_UNICAST = BGP_AF_START,
@@ -1305,6 +1298,8 @@ struct peer {
  * extended communities.
  */
 #define PEER_FLAG_DISABLE_LINK_BW_ENCODING_IEEE (1U << 29)
+/* force the extended format for Optional Parameters in OPEN message */
+#define PEER_FLAG_EXTENDED_OPT_PARAMS (1U << 30)
 
 	/*
 	 *GR-Disabled mode means unset PEER_FLAG_GRACEFUL_RESTART
@@ -1391,6 +1386,8 @@ struct peer {
 #define PEER_STATUS_GROUP             (1U << 4) /* peer-group conf */
 #define PEER_STATUS_NSF_MODE          (1U << 5) /* NSF aware peer */
 #define PEER_STATUS_NSF_WAIT          (1U << 6) /* wait comeback peer */
+/* received extended format encoding for OPEN message */
+#define PEER_STATUS_EXT_OPT_PARAMS_LENGTH (1U << 7)
 
 	/* Peer status af flags (reset in bgp_stop) */
 	uint16_t af_sflags[AFI_MAX][SAFI_MAX];
@@ -1405,6 +1402,8 @@ struct peer {
 #define PEER_STATUS_BORR_RECEIVED (1U << 8) /* BoRR received from peer */
 #define PEER_STATUS_EORR_SEND (1U << 9) /* EoRR send to peer */
 #define PEER_STATUS_EORR_RECEIVED (1U << 10) /* EoRR received from peer */
+/* LLGR aware peer */
+#define PEER_STATUS_LLGR_WAIT (1U << 11)
 
 	/* Configured timer values. */
 	_Atomic uint32_t holdtime;
@@ -1436,6 +1435,7 @@ struct peer {
 	struct thread *t_pmax_restart;
 	struct thread *t_gr_restart;
 	struct thread *t_gr_stale;
+	struct thread *t_llgr_stale[AFI_MAX][SAFI_MAX];
 	struct thread *t_generate_updgrp_packets;
 	struct thread *t_process_packet;
 	struct thread *t_process_packet_error;
@@ -1731,6 +1731,9 @@ struct bgp_nlri {
 /* Default BGP port number.  */
 #define BGP_PORT_DEFAULT                       179
 
+/* Extended BGP Administrative Shutdown Communication */
+#define BGP_ADMIN_SHUTDOWN_MSG_LEN 255
+
 /* BGP minimum message size.  */
 #define BGP_MSG_OPEN_MIN_SIZE                   (BGP_HEADER_SIZE + 10)
 #define BGP_MSG_UPDATE_MIN_SIZE                 (BGP_HEADER_SIZE + 4)
@@ -1763,9 +1766,6 @@ struct bgp_nlri {
 #define BGP_ATTR_COMMUNITIES                     8
 #define BGP_ATTR_ORIGINATOR_ID                   9
 #define BGP_ATTR_CLUSTER_LIST                   10
-#define BGP_ATTR_DPA                            11
-#define BGP_ATTR_ADVERTISER                     12
-#define BGP_ATTR_RCID_PATH                      13
 #define BGP_ATTR_MP_REACH_NLRI                  14
 #define BGP_ATTR_MP_UNREACH_NLRI                15
 #define BGP_ATTR_EXT_COMMUNITIES                16
@@ -1885,7 +1885,7 @@ struct bgp_nlri {
 #define BGP_DEFAULT_UPDATE_ADVERTISEMENT_TIME  1
 
 /* BGP Long-lived Graceful Restart */
-#define BGP_DEFAULT_LLGR_STALE_TIME 360
+#define BGP_DEFAULT_LLGR_STALE_TIME 0
 
 /* BGP uptime string length.  */
 #define BGP_UPTIME_LEN 25
@@ -2021,6 +2021,8 @@ extern bgp_peer_sort_t peer_sort_lookup(struct peer *peer);
 
 extern bool peer_active(struct peer *);
 extern bool peer_active_nego(struct peer *);
+extern bool peer_afc_received(struct peer *peer);
+extern bool peer_afc_advertised(struct peer *peer);
 extern void bgp_recalculate_all_bestpaths(struct bgp *bgp);
 extern struct peer *peer_create(union sockunion *, const char *, struct bgp *,
 				as_t, as_t, int, struct peer_group *);
@@ -2476,4 +2478,7 @@ void peer_nsf_stop(struct peer *peer);
 
 void peer_tcp_mss_set(struct peer *peer, uint32_t tcp_mss);
 void peer_tcp_mss_unset(struct peer *peer);
+
+extern void bgp_recalculate_afi_safi_bestpaths(struct bgp *bgp, afi_t afi,
+					       safi_t safi);
 #endif /* _QUAGGA_BGPD_H */

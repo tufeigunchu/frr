@@ -180,7 +180,7 @@ sigusr1(void)
 	zlog_rotate();
 }
 
-static struct quagga_signal_t ldp_signals[] =
+static struct frr_signal_t ldp_signals[] =
 {
 	{
 		.signal = SIGHUP,
@@ -373,7 +373,7 @@ main(int argc, char *argv[])
 
 	master = frr_init();
 
-	vrf_init(NULL, NULL, NULL, NULL, NULL);
+	vrf_init(NULL, NULL, NULL, NULL);
 	access_list_init();
 	ldp_vty_init();
 	ldp_zebra_init(master);

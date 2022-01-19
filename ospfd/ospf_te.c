@@ -2171,7 +2171,7 @@ static int ospf_te_parse_te(struct ls_ted *ted, struct ospf_lsa *lsa)
 	if ((len == 0) || (ntohs(tlvh->type) != TE_TLV_LINK))
 		return 0;
 
-	sum = 0;
+	sum = sizeof(struct tlv_header);
 	/* Browse sub-TLV and fulfill Link State Attributes */
 	for (tlvh = TLV_DATA(tlvh); sum < len; tlvh = TLV_HDR_NEXT(tlvh)) {
 		uint32_t val32, tab32[2];
@@ -2377,7 +2377,7 @@ static int ospf_te_delete_te(struct ls_ted *ted, struct ospf_lsa *lsa)
 	if (ntohs(tlvh->type) == TE_TLV_ROUTER_ADDR)
 		tlvh = TLV_HDR_NEXT(tlvh);
 	len = TLV_BODY_SIZE(tlvh);
-	sum = 0;
+	sum = sizeof(struct tlv_header);
 
 	/* Browse sub-TLV to find Link ID */
 	for (tlvh = TLV_DATA(tlvh); sum < len; tlvh = TLV_HDR_NEXT(tlvh)) {
@@ -4432,12 +4432,8 @@ DEFUN (show_ip_ospf_mpls_te_db,
 		ls_show_ted(OspfMplsTE.ted, vty, json, verbose);
 	}
 
-	if (uj) {
-		vty_out(vty, "%s\n",
-			json_object_to_json_string_ext(
-				json, JSON_C_TO_STRING_PRETTY));
-		json_object_free(json);
-	}
+	if (uj)
+		vty_json(vty, json);
 	return CMD_SUCCESS;
 }
 

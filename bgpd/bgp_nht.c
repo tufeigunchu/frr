@@ -588,7 +588,7 @@ static void bgp_nht_ifp_handle(struct interface *ifp, bool up)
 {
 	struct bgp *bgp;
 
-	bgp = bgp_lookup_by_vrf_id(ifp->vrf_id);
+	bgp = ifp->vrf->info;
 	if (!bgp)
 		return;
 
@@ -895,10 +895,11 @@ static void sendmsg_zebra_rnh(struct bgp_nexthop_cache *bnc, int command)
 
 	ret = zclient_send_rnh(zclient, command, &bnc->prefix, exact_match,
 			       resolve_via_default, bnc->bgp->vrf_id);
-	/* TBD: handle the failure */
-	if (ret == ZCLIENT_SEND_FAILURE)
+	if (ret == ZCLIENT_SEND_FAILURE) {
 		flog_warn(EC_BGP_ZEBRA_SEND,
 			  "sendmsg_nexthop: zclient_send_message() failed");
+		return;
+	}
 
 	if (command == ZEBRA_NEXTHOP_REGISTER)
 		SET_FLAG(bnc->flags, BGP_NEXTHOP_REGISTERED);
@@ -1298,12 +1299,11 @@ static void bgp_l3nhg_zebra_init(void)
 }
 
 
-#define min(A, B) ((A) < (B) ? (A) : (B))
 void bgp_l3nhg_init(void)
 {
 	uint32_t id_max;
 
-	id_max = min(ZEBRA_NHG_PROTO_SPACING - 1, 16 * 1024);
+	id_max = MIN(ZEBRA_NHG_PROTO_SPACING - 1, 16 * 1024);
 	bf_init(bgp_nh_id_bitmap, id_max);
 	bf_assign_zero_index(bgp_nh_id_bitmap);
 

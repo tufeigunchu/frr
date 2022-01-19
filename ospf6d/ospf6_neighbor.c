@@ -1073,10 +1073,7 @@ static void ospf6_neighbor_show_detail_common(struct vty *vty,
 			json_object_object_add(json, "neighbors", json_array);
 		else
 			json_object_free(json_array);
-		vty_out(vty, "%s\n",
-			json_object_to_json_string_ext(
-				json, JSON_C_TO_STRING_PRETTY));
-		json_object_free(json);
+		vty_json(vty, json);
 	}
 }
 
@@ -1114,12 +1111,15 @@ DEFUN(show_ipv6_ospf6_neighbor, show_ipv6_ospf6_neighbor_cmd,
 		}
 	}
 
+	OSPF6_CMD_CHECK_VRF(uj, all_vrf, ospf6);
+
 	return CMD_SUCCESS;
 }
 
 static int ospf6_neighbor_show_common(struct vty *vty, int argc,
 				      struct cmd_token **argv,
-				      struct ospf6 *ospf6, int idx_ipv4)
+				      struct ospf6 *ospf6, int idx_ipv4,
+				      bool uj)
 {
 	struct ospf6_neighbor *on;
 	struct ospf6_interface *oi;
@@ -1129,7 +1129,6 @@ static int ospf6_neighbor_show_common(struct vty *vty, int argc,
 			 json_object *json, bool use_json);
 	uint32_t router_id;
 	json_object *json = NULL;
-	bool uj = use_json(argc, argv);
 
 	showfunc = ospf6_neighbor_show_detail;
 	if (uj)
@@ -1148,12 +1147,8 @@ static int ospf6_neighbor_show_common(struct vty *vty, int argc,
 					(*showfunc)(vty, on, json, uj);
 			}
 
-	if (uj) {
-		vty_out(vty, "%s\n",
-			json_object_to_json_string_ext(
-				json, JSON_C_TO_STRING_PRETTY));
-		json_object_free(json);
-	}
+	if (uj)
+		vty_json(vty, json);
 
 	return CMD_SUCCESS;
 }
@@ -1171,6 +1166,7 @@ DEFUN(show_ipv6_ospf6_neighbor_one, show_ipv6_ospf6_neighbor_one_cmd,
 	const char *vrf_name = NULL;
 	bool all_vrf = false;
 	int idx_vrf = 0;
+	bool uj = use_json(argc, argv);
 
 	OSPF6_FIND_VRF_ARGS(argv, argc, idx_vrf, vrf_name, all_vrf);
 	if (idx_vrf > 0)
@@ -1179,12 +1175,14 @@ DEFUN(show_ipv6_ospf6_neighbor_one, show_ipv6_ospf6_neighbor_one_cmd,
 	for (ALL_LIST_ELEMENTS_RO(om6->ospf6, node, ospf6)) {
 		if (all_vrf || strcmp(ospf6->name, vrf_name) == 0) {
 			ospf6_neighbor_show_common(vty, argc, argv, ospf6,
-						   idx_ipv4);
+						   idx_ipv4, uj);
 
 			if (!all_vrf)
 				break;
 		}
 	}
+
+	OSPF6_CMD_CHECK_VRF(uj, all_vrf, ospf6);
 
 	return CMD_SUCCESS;
 }
@@ -1254,7 +1252,6 @@ DEFUN (no_debug_ospf6,
        OSPF6_STR)
 {
 	unsigned int i;
-	struct ospf6_lsa_handler *handler = NULL;
 
 	OSPF6_DEBUG_ABR_OFF();
 	OSPF6_DEBUG_ASBR_OFF();
@@ -1264,13 +1261,7 @@ DEFUN (no_debug_ospf6,
 	OSPF6_DEBUG_FLOODING_OFF();
 	OSPF6_DEBUG_INTERFACE_OFF();
 
-	for (i = 0; i < vector_active(ospf6_lsa_handler_vector); i++) {
-		handler = vector_slot(ospf6_lsa_handler_vector, i);
-
-		if (handler != NULL) {
-			UNSET_FLAG(handler->lh_debug, OSPF6_LSA_DEBUG);
-		}
-	}
+	ospf6_lsa_debug_set_all(false);
 
 	for (i = 0; i < 6; i++)
 		OSPF6_DEBUG_MESSAGE_OFF(i,

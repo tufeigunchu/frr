@@ -185,7 +185,7 @@ int zsend_interface_add(struct zserv *client, struct interface *ifp)
 {
 	struct stream *s = stream_new(ZEBRA_MAX_PACKET_SIZ);
 
-	zclient_create_header(s, ZEBRA_INTERFACE_ADD, ifp->vrf_id);
+	zclient_create_header(s, ZEBRA_INTERFACE_ADD, ifp->vrf->vrf_id);
 	zserv_encode_interface(s, ifp);
 
 	client->ifadd_cnt++;
@@ -197,7 +197,7 @@ int zsend_interface_delete(struct zserv *client, struct interface *ifp)
 {
 	struct stream *s = stream_new(ZEBRA_MAX_PACKET_SIZ);
 
-	zclient_create_header(s, ZEBRA_INTERFACE_DELETE, ifp->vrf_id);
+	zclient_create_header(s, ZEBRA_INTERFACE_DELETE, ifp->vrf->vrf_id);
 	zserv_encode_interface(s, ifp);
 
 	client->ifdel_cnt++;
@@ -237,7 +237,7 @@ int zsend_interface_link_params(struct zserv *client, struct interface *ifp)
 		return 0;
 	}
 
-	zclient_create_header(s, ZEBRA_INTERFACE_LINK_PARAMS, ifp->vrf_id);
+	zclient_create_header(s, ZEBRA_INTERFACE_LINK_PARAMS, ifp->vrf->vrf_id);
 
 	/* Add Interface Index */
 	stream_putl(s, ifp->ifindex);
@@ -299,7 +299,7 @@ int zsend_interface_address(int cmd, struct zserv *client,
 	struct prefix *p;
 	struct stream *s = stream_new(ZEBRA_MAX_PACKET_SIZ);
 
-	zclient_create_header(s, cmd, ifp->vrf_id);
+	zclient_create_header(s, cmd, ifp->vrf->vrf_id);
 	stream_putl(s, ifp->ifindex);
 
 	/* Interface address flag. */
@@ -341,7 +341,7 @@ static int zsend_interface_nbr_address(int cmd, struct zserv *client,
 	struct stream *s = stream_new(ZEBRA_MAX_PACKET_SIZ);
 	struct prefix *p;
 
-	zclient_create_header(s, cmd, ifp->vrf_id);
+	zclient_create_header(s, cmd, ifp->vrf->vrf_id);
 	stream_putl(s, ifp->ifindex);
 
 	/* Prefix information. */
@@ -459,7 +459,7 @@ int zsend_interface_vrf_update(struct zserv *client, struct interface *ifp,
 {
 	struct stream *s = stream_new(ZEBRA_MAX_PACKET_SIZ);
 
-	zclient_create_header(s, ZEBRA_INTERFACE_VRF_UPDATE, ifp->vrf_id);
+	zclient_create_header(s, ZEBRA_INTERFACE_VRF_UPDATE, ifp->vrf->vrf_id);
 
 	/* Fill in the name of the interface and its new VRF (id) */
 	stream_put(s, ifp->name, INTERFACE_NAMSIZ);
@@ -534,7 +534,7 @@ int zsend_interface_update(int cmd, struct zserv *client, struct interface *ifp)
 {
 	struct stream *s = stream_new(ZEBRA_MAX_PACKET_SIZ);
 
-	zclient_create_header(s, cmd, ifp->vrf_id);
+	zclient_create_header(s, cmd, ifp->vrf->vrf_id);
 	zserv_encode_interface(s, ifp);
 
 	if (cmd == ZEBRA_INTERFACE_UP)
@@ -871,8 +871,7 @@ void zsend_iptable_notify_owner(const struct zebra_dplane_ctx *ctx,
 	struct zebra_pbr_iptable ipt;
 	uint16_t cmd = ZEBRA_IPTABLE_NOTIFY_OWNER;
 
-	if (!dplane_ctx_get_pbr_iptable(ctx, &ipt))
-		return;
+	dplane_ctx_get_pbr_iptable(ctx, &ipt);
 
 	if (IS_ZEBRA_DEBUG_PACKET)
 		zlog_debug("%s: Notifying %s id %u note %u", __func__,
@@ -906,8 +905,7 @@ void zsend_ipset_notify_owner(const struct zebra_dplane_ctx *ctx,
 	struct zebra_pbr_ipset ipset;
 	uint16_t cmd = ZEBRA_IPSET_NOTIFY_OWNER;
 
-	if (!dplane_ctx_get_pbr_ipset(ctx, &ipset))
-		return;
+	dplane_ctx_get_pbr_ipset(ctx, &ipset);
 
 	if (IS_ZEBRA_DEBUG_PACKET)
 		zlog_debug("%s: Notifying %s id %u note %u", __func__,
@@ -942,10 +940,8 @@ void zsend_ipset_entry_notify_owner(const struct zebra_dplane_ctx *ctx,
 	struct zebra_pbr_ipset ipset;
 	uint16_t cmd = ZEBRA_IPSET_ENTRY_NOTIFY_OWNER;
 
-	if (!dplane_ctx_get_pbr_ipset_entry(ctx, &ipent))
-		return;
-	if (!dplane_ctx_get_pbr_ipset(ctx, &ipset))
-		return;
+	dplane_ctx_get_pbr_ipset_entry(ctx, &ipent);
+	dplane_ctx_get_pbr_ipset(ctx, &ipset);
 
 	if (IS_ZEBRA_DEBUG_PACKET)
 		zlog_debug("%s: Notifying %s id %u note %u", __func__,
@@ -989,7 +985,8 @@ void zsend_nhrp_neighbor_notify(int cmd, struct interface *ifp,
 	       family2addrsize(sockunion_family(&ip)));
 
 	for (ALL_LIST_ELEMENTS(zrouter.client_list, node, nnode, client)) {
-		if (!vrf_bitmap_check(client->nhrp_neighinfo[afi], ifp->vrf_id))
+		if (!vrf_bitmap_check(client->nhrp_neighinfo[afi],
+				      ifp->vrf->vrf_id))
 			continue;
 
 		s = stream_new(ZEBRA_MAX_PACKET_SIZ);
@@ -3425,7 +3422,7 @@ static inline void zebra_gre_get(ZAPI_HANDLER_ARGS)
 					zebra_ns_lookup(gre_info->link_nsid),
 					gre_info->ifindex_link);
 		if (ifp_link)
-			vrf_id_link = ifp_link->vrf_id;
+			vrf_id_link = ifp_link->vrf->vrf_id;
 		stream_putl(s, vrf_id_link);
 		stream_putl(s, gre_info->vtep_ip.s_addr);
 		stream_putl(s, gre_info->vtep_ip_remote.s_addr);

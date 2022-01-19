@@ -42,6 +42,7 @@
 #include "zebra_netns_notify.h"
 #include "zebra_netns_id.h"
 #include "zebra_errors.h"
+#include "interface.h"
 
 #ifdef HAVE_NETLINK
 
@@ -154,6 +155,7 @@ static int zebra_ns_continue_read(struct zebra_netns_info *zns_info,
 static int zebra_ns_delete(char *name)
 {
 	struct vrf *vrf = vrf_lookup_by_name(name);
+	struct interface *ifp, *tmp;
 	struct ns *ns;
 
 	if (!vrf) {
@@ -161,6 +163,25 @@ static int zebra_ns_delete(char *name)
 			  "NS notify : no VRF found using NS %s", name);
 		return 0;
 	}
+
+	/*
+	 * We don't receive interface down/delete notifications from kernel
+	 * when a netns is deleted. Therefore we have to manually replicate
+	 * the necessary actions here.
+	 */
+	RB_FOREACH_SAFE (ifp, if_name_head, &vrf->ifaces_by_name, tmp) {
+		if (!CHECK_FLAG(ifp->status, ZEBRA_INTERFACE_ACTIVE))
+			continue;
+
+		if (if_is_no_ptm_operative(ifp)) {
+			UNSET_FLAG(ifp->flags, IFF_RUNNING);
+			if_down(ifp);
+		}
+
+		UNSET_FLAG(ifp->flags, IFF_UP);
+		if_delete_update(ifp);
+	}
+
 	ns = (struct ns *)vrf->ns_ctxt;
 	/* the deletion order is the same
 	 * as the one used when siging signal is received
@@ -245,8 +266,8 @@ static int zebra_ns_ready_read(struct thread *t)
 	}
 	if (zebra_ns_notify_is_default_netns(basename(netnspath))) {
 		zlog_warn(
-			  "NS notify : NS %s is default VRF. Updating VRF Name", basename(netnspath));
-		vrf_set_default_name(basename(netnspath), false);
+			"NS notify : NS %s is default VRF. Ignore VRF creation",
+			basename(netnspath));
 		return zebra_ns_continue_read(zns_info, 1);
 	}
 
@@ -346,8 +367,8 @@ void zebra_ns_notify_parse(void)
 		}
 		if (zebra_ns_notify_is_default_netns(dent->d_name)) {
 			zlog_warn(
-				  "NS notify : NS %s is default VRF. Updating VRF Name", dent->d_name);
-			vrf_set_default_name(dent->d_name, false);
+				"NS notify : NS %s is default VRF. Ignore VRF creation",
+				dent->d_name);
 			continue;
 		}
 		zebra_ns_notify_create_context_from_entry_name(dent->d_name);

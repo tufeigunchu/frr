@@ -583,7 +583,7 @@ int bfd_recv_cb(struct thread *t)
 	if (ifindex) {
 		ifp = if_lookup_by_index(ifindex, vrfid);
 		if (ifp)
-			vrfid = ifp->vrf_id;
+			vrfid = ifp->vrf->vrf_id;
 	}
 
 	/* Implement RFC 5880 6.8.6 */
@@ -639,8 +639,6 @@ int bfd_recv_cb(struct thread *t)
 		return 0;
 	}
 
-	bfd->stats.rx_ctrl_pkt++;
-
 	/*
 	 * Multi hop: validate packet TTL.
 	 * Single hop: set local address that received the packet.
@@ -655,6 +653,8 @@ int bfd_recv_cb(struct thread *t)
 	} else if (bfd->local_address.sa_sin.sin_family == AF_UNSPEC) {
 		bfd->local_address = local;
 	}
+
+	bfd->stats.rx_ctrl_pkt++;
 
 	/*
 	 * If no interface was detected, save the interface where the
@@ -697,10 +697,25 @@ int bfd_recv_cb(struct thread *t)
 
 		/* Handle poll finalization. */
 		bs_final_handler(bfd);
-	} else {
-		/* Received a packet, lets update the receive timer. */
-		bfd_recvtimer_update(bfd);
 	}
+
+	/*
+	 * Detection timeout calculation:
+	 * The minimum detection timeout is the remote detection
+	 * multipler (number of packets to be missed) times the agreed
+	 * transmission interval.
+	 *
+	 * RFC 5880, Section 6.8.4.
+	 */
+	if (bfd->cur_timers.required_min_rx > bfd->remote_timers.desired_min_tx)
+		bfd->detect_TO = bfd->remote_detect_mult
+				 * bfd->cur_timers.required_min_rx;
+	else
+		bfd->detect_TO = bfd->remote_detect_mult
+				 * bfd->remote_timers.desired_min_tx;
+
+	/* Apply new receive timer immediately. */
+	bfd_recvtimer_update(bfd);
 
 	/* Handle echo timers changes. */
 	bs_echo_timer_handler(bfd);

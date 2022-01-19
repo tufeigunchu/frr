@@ -553,7 +553,7 @@ void bgp_adj_out_set_subgroup(struct bgp_dest *dest,
 
 	bgp_adv_fifo_add_tail(&subgrp->sync->update, adv);
 
-	subgrp->version = max(subgrp->version, dest->version);
+	subgrp->version = MAX(subgrp->version, dest->version);
 }
 
 /* The only time 'withdraw' will be false is if we are sending
@@ -609,7 +609,7 @@ void bgp_adj_out_unset_subgroup(struct bgp_dest *dest,
 		}
 	}
 
-	subgrp->version = max(subgrp->version, dest->version);
+	subgrp->version = MAX(subgrp->version, dest->version);
 }
 
 void bgp_adj_out_remove_subgroup(struct bgp_dest *dest, struct bgp_adj_out *adj,
@@ -686,11 +686,21 @@ void subgroup_announce_table(struct update_subgroup *subgrp,
 							    dest_p, &attr,
 							    false)) {
 					/* Check if route can be advertised */
-					if (advertise)
-						bgp_adj_out_set_subgroup(dest,
-									 subgrp,
-									 &attr,
-									 ri);
+					if (advertise) {
+						if (!bgp_check_withdrawal(bgp,
+									  dest))
+							bgp_adj_out_set_subgroup(
+								dest, subgrp,
+								&attr, ri);
+						else
+							bgp_adj_out_unset_subgroup(
+								dest, subgrp, 1,
+								bgp_addpath_id_for_peer(
+									peer,
+									afi,
+									safi,
+									&ri->tx_addpath));
+					}
 				} else {
 					/* If default originate is enabled for
 					 * the peer, do not send explicit
@@ -721,7 +731,7 @@ void subgroup_announce_table(struct update_subgroup *subgrp,
 	 * covers the pathological case where all routes in the table have
 	 * now been deleted.
 	 */
-	subgrp->version = max(subgrp->version, table->version);
+	subgrp->version = MAX(subgrp->version, table->version);
 
 	/*
 	 * Start a task to merge the subgroup if necessary.

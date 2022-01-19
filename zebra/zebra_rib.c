@@ -305,35 +305,41 @@ static void route_entry_attach_ref(struct route_entry *re,
 {
 	re->nhe = new;
 	re->nhe_id = new->id;
+	re->nhe_installed_id = 0;
 
 	zebra_nhg_increment_ref(new);
 }
 
+/* Replace (if 'new_nhghe') or clear (if that's NULL) an re's nhe. */
 int route_entry_update_nhe(struct route_entry *re,
 			   struct nhg_hash_entry *new_nhghe)
 {
-	struct nhg_hash_entry *old;
 	int ret = 0;
+	struct nhg_hash_entry *old_nhg = NULL;
 
 	if (new_nhghe == NULL) {
-		if (re->nhe)
-			zebra_nhg_decrement_ref(re->nhe);
+		old_nhg = re->nhe;
+
+		re->nhe_id = 0;
+		re->nhe_installed_id = 0;
 		re->nhe = NULL;
 		goto done;
 	}
 
 	if ((re->nhe_id != 0) && re->nhe && (re->nhe != new_nhghe)) {
-		old = re->nhe;
+		/* Capture previous nhg, if any */
+		old_nhg = re->nhe;
 
 		route_entry_attach_ref(re, new_nhghe);
-
-		if (old)
-			zebra_nhg_decrement_ref(old);
 	} else if (!re->nhe)
 		/* This is the first time it's being attached */
 		route_entry_attach_ref(re, new_nhghe);
 
 done:
+	/* Detach / deref previous nhg */
+	if (old_nhg)
+		zebra_nhg_decrement_ref(old_nhg);
+
 	return ret;
 }
 
@@ -692,7 +698,8 @@ static int rib_can_delete_dest(rib_dest_t *dest)
 	return 1;
 }
 
-void zebra_rib_evaluate_rn_nexthops(struct route_node *rn, uint32_t seq)
+void zebra_rib_evaluate_rn_nexthops(struct route_node *rn, uint32_t seq,
+				    bool rt_delete)
 {
 	rib_dest_t *dest = rib_dest_from_rnode(rn);
 	struct rnh *rnh;
@@ -713,6 +720,12 @@ void zebra_rib_evaluate_rn_nexthops(struct route_node *rn, uint32_t seq)
 				__func__, rn,
 				dest ? rnh_list_count(&dest->nht) : 0);
 
+		if (rt_delete && (!dest || !rnh_list_count(&dest->nht))) {
+			if (IS_ZEBRA_DEBUG_NHT_DETAILED)
+				zlog_debug("%pRN has no tracking NHTs. Bailing",
+					   rn);
+			break;
+		}
 		if (!dest) {
 			rn = rn->parent;
 			if (rn)
@@ -792,7 +805,8 @@ int rib_gc_dest(struct route_node *rn)
 		rnode_debug(rn, zvrf_id(zvrf), "removing dest from table");
 	}
 
-	zebra_rib_evaluate_rn_nexthops(rn, zebra_router_get_next_sequence());
+	zebra_rib_evaluate_rn_nexthops(rn, zebra_router_get_next_sequence(),
+				       true);
 
 	dest->rnode = NULL;
 	rnh_list_fini(&dest->nht);
@@ -1026,7 +1040,7 @@ static struct route_entry *rib_choose_best(struct route_entry *current,
 			struct interface *ifp = if_lookup_by_index(
 				nexthop->ifindex, alternate->vrf_id);
 
-			if (ifp && if_is_loopback_or_vrf(ifp))
+			if (ifp && if_is_loopback(ifp))
 				return alternate;
 		}
 
@@ -1034,7 +1048,7 @@ static struct route_entry *rib_choose_best(struct route_entry *current,
 			struct interface *ifp = if_lookup_by_index(
 				nexthop->ifindex, current->vrf_id);
 
-			if (ifp && if_is_loopback_or_vrf(ifp))
+			if (ifp && if_is_loopback(ifp))
 				return current;
 		}
 
@@ -1797,6 +1811,7 @@ static void rib_process_result(struct zebra_dplane_ctx *ctx)
 	rib_dest_t *dest;
 	bool fib_changed = false;
 	struct rib_table_info *info;
+	bool rt_delete = false;
 
 	zvrf = vrf_info_lookup(dplane_ctx_get_vrf(ctx));
 	vrf = vrf_lookup_by_id(dplane_ctx_get_vrf(ctx));
@@ -1984,6 +1999,7 @@ static void rib_process_result(struct zebra_dplane_ctx *ctx)
 		}
 		break;
 	case DPLANE_OP_ROUTE_DELETE:
+		rt_delete = true;
 		if (re)
 			SET_FLAG(re->status, ROUTE_ENTRY_FAILED);
 		/*
@@ -2026,7 +2042,7 @@ static void rib_process_result(struct zebra_dplane_ctx *ctx)
 		break;
 	}
 
-	zebra_rib_evaluate_rn_nexthops(rn, seq);
+	zebra_rib_evaluate_rn_nexthops(rn, seq, rt_delete);
 	zebra_rib_evaluate_mpls(rn);
 done:
 
@@ -2262,8 +2278,8 @@ static void rib_process_dplane_notify(struct zebra_dplane_ctx *ctx)
 	}
 
 	/* Make any changes visible for lsp and nexthop-tracking processing */
-	zebra_rib_evaluate_rn_nexthops(
-		rn, zebra_router_get_next_sequence());
+	zebra_rib_evaluate_rn_nexthops(rn, zebra_router_get_next_sequence(),
+				       false);
 
 	zebra_rib_evaluate_mpls(rn);
 
@@ -3093,7 +3109,8 @@ void rib_unlink(struct route_node *rn, struct route_entry *re)
 
 	if (re->nhe && re->nhe_id) {
 		assert(re->nhe->id == re->nhe_id);
-		zebra_nhg_decrement_ref(re->nhe);
+
+		route_entry_update_nhe(re, NULL);
 	} else if (re->nhe && re->nhe->nhg.nexthop)
 		nexthops_free(re->nhe->nhg.nexthop);
 

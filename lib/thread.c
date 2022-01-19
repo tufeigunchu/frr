@@ -1695,7 +1695,7 @@ struct thread *thread_fetch(struct thread_master *m, struct thread *fetch)
 	do {
 		/* Handle signals if any */
 		if (m->handle_signals)
-			quagga_sigevent_process();
+			frr_sigevent_process();
 
 		pthread_mutex_lock(&m->mtx);
 
@@ -2055,4 +2055,71 @@ bool thread_is_scheduled(struct thread *thread)
 		return false;
 
 	return true;
+}
+
+static ssize_t printfrr_thread_dbg(struct fbuf *buf, struct printfrr_eargs *ea,
+				   const struct thread *thread)
+{
+	static const char * const types[] = {
+		[THREAD_READ] = "read",
+		[THREAD_WRITE] = "write",
+		[THREAD_TIMER] = "timer",
+		[THREAD_EVENT] = "event",
+		[THREAD_READY] = "ready",
+		[THREAD_UNUSED] = "unused",
+		[THREAD_EXECUTE] = "exec",
+	};
+	ssize_t rv = 0;
+	char info[16] = "";
+
+	if (!thread)
+		return bputs(buf, "{(thread *)NULL}");
+
+	rv += bprintfrr(buf, "{(thread *)%p arg=%p", thread, thread->arg);
+
+	if (thread->type < array_size(types) && types[thread->type])
+		rv += bprintfrr(buf, " %-6s", types[thread->type]);
+	else
+		rv += bprintfrr(buf, " INVALID(%u)", thread->type);
+
+	switch (thread->type) {
+	case THREAD_READ:
+	case THREAD_WRITE:
+		snprintfrr(info, sizeof(info), "fd=%d", thread->u.fd);
+		break;
+
+	case THREAD_TIMER:
+		snprintfrr(info, sizeof(info), "r=%pTVMud", &thread->u.sands);
+		break;
+	}
+
+	rv += bprintfrr(buf, " %-12s %s() %s from %s:%d}", info,
+			thread->xref->funcname, thread->xref->dest,
+			thread->xref->xref.file, thread->xref->xref.line);
+	return rv;
+}
+
+printfrr_ext_autoreg_p("TH", printfrr_thread);
+static ssize_t printfrr_thread(struct fbuf *buf, struct printfrr_eargs *ea,
+			       const void *ptr)
+{
+	const struct thread *thread = ptr;
+	struct timespec remain = {};
+
+	if (ea->fmt[0] == 'D') {
+		ea->fmt++;
+		return printfrr_thread_dbg(buf, ea, thread);
+	}
+
+	if (!thread) {
+		/* need to jump over time formatting flag characters in the
+		 * input format string, i.e. adjust ea->fmt!
+		 */
+		printfrr_time(buf, ea, &remain,
+			      TIMEFMT_TIMER_DEADLINE | TIMEFMT_SKIP);
+		return bputch(buf, '-');
+	}
+
+	TIMEVAL_TO_TIMESPEC(&thread->u.sands, &remain);
+	return printfrr_time(buf, ea, &remain, TIMEFMT_TIMER_DEADLINE);
 }

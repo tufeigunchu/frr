@@ -879,12 +879,12 @@ void ospf6_plist_update(struct prefix_list *plist)
 
 DEFUN (area_import_list,
        area_import_list_cmd,
-       "area <A.B.C.D|(0-4294967295)> import-list NAME",
+       "area <A.B.C.D|(0-4294967295)> import-list ACCESSLIST6_NAME",
        "OSPF6 area parameters\n"
        "OSPF6 area ID in IP address format\n"
        "OSPF6 area ID as a decimal value\n"
        "Set the filter for networks from other areas announced to the specified one\n"
-       "Name of the acess-list\n")
+       "Name of the access-list\n")
 {
 	int idx_ipv4 = 1;
 	int idx_name = 3;
@@ -911,7 +911,7 @@ DEFUN (area_import_list,
 
 DEFUN (no_area_import_list,
        no_area_import_list_cmd,
-       "no area <A.B.C.D|(0-4294967295)> import-list NAME",
+       "no area <A.B.C.D|(0-4294967295)> import-list ACCESSLIST6_NAME",
        NO_STR
        "OSPF6 area parameters\n"
        "OSPF6 area ID in IP address format\n"
@@ -940,12 +940,12 @@ DEFUN (no_area_import_list,
 
 DEFUN (area_export_list,
        area_export_list_cmd,
-       "area <A.B.C.D|(0-4294967295)> export-list NAME",
+       "area <A.B.C.D|(0-4294967295)> export-list ACCESSLIST6_NAME",
        "OSPF6 area parameters\n"
        "OSPF6 area ID in IP address format\n"
        "OSPF6 area ID as a decimal value\n"
        "Set the filter for networks announced to other areas\n"
-       "Name of the acess-list\n")
+       "Name of the access-list\n")
 {
 	int idx_ipv4 = 1;
 	int idx_name = 3;
@@ -974,7 +974,7 @@ DEFUN (area_export_list,
 
 DEFUN (no_area_export_list,
        no_area_export_list_cmd,
-       "no area <A.B.C.D|(0-4294967295)> export-list NAME",
+       "no area <A.B.C.D|(0-4294967295)> export-list ACCESSLIST6_NAME",
        NO_STR
        "OSPF6 area parameters\n"
        "OSPF6 area ID in IP address format\n"
@@ -1045,12 +1045,8 @@ static int ipv6_ospf6_spf_tree_common(struct vty *vty, struct ospf6 *ospf6,
 		}
 	}
 
-	if (uj) {
-		vty_out(vty, "%s\n",
-			json_object_to_json_string_ext(
-				json, JSON_C_TO_STRING_PRETTY));
-		json_object_free(json);
-	}
+	if (uj)
+		vty_json(vty, json);
 
 	return CMD_SUCCESS;
 }
@@ -1078,6 +1074,8 @@ DEFUN(show_ipv6_ospf6_spf_tree, show_ipv6_ospf6_spf_tree_cmd,
 				break;
 		}
 	}
+
+	OSPF6_CMD_CHECK_VRF(uj, all_vrf, ospf6);
 
 	return CMD_SUCCESS;
 }
@@ -1145,6 +1143,8 @@ DEFUN(show_ipv6_ospf6_area_spf_tree, show_ipv6_ospf6_area_spf_tree_cmd,
 				break;
 		}
 	}
+
+	OSPF6_CMD_CHECK_VRF(false, all_vrf, ospf6);
 
 	return CMD_SUCCESS;
 }
@@ -1233,6 +1233,8 @@ DEFUN(show_ipv6_ospf6_simulate_spf_tree_root,
 				break;
 		}
 	}
+
+	OSPF6_CMD_CHECK_VRF(false, all_vrf, ospf6);
 
 	return CMD_SUCCESS;
 }

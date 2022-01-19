@@ -108,8 +108,11 @@ struct route_entry {
 	struct nexthop_group fib_ng;
 	struct nexthop_group fib_backup_ng;
 
-	/* Nexthop group hash entry ID */
+	/* Nexthop group hash entry IDs. The "installed" id is the id
+	 * used in linux/netlink, if available.
+	 */
 	uint32_t nhe_id;
+	uint32_t nhe_installed_id;
 
 	/* Tag */
 	route_tag_t tag;
@@ -487,7 +490,8 @@ extern struct route_table *rib_tables_iter_next(rib_tables_iter_t *iter);
 
 extern uint8_t route_distance(int type);
 
-extern void zebra_rib_evaluate_rn_nexthops(struct route_node *rn, uint32_t seq);
+extern void zebra_rib_evaluate_rn_nexthops(struct route_node *rn, uint32_t seq,
+					   bool rt_delete);
 
 /*
  * Inline functions.

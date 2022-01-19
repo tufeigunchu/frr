@@ -587,6 +587,33 @@ static inline bool bgp_check_advertise(struct bgp *bgp, struct bgp_dest *dest)
 		 (!bgp_option_check(BGP_OPT_NO_FIB))));
 }
 
+/*
+ * If we have a fib result and it failed to install( or was withdrawn due
+ * to better admin distance we need to send down the wire a withdrawal.
+ * This function assumes that bgp_check_advertise was already returned
+ * as good to go.
+ */
+static inline bool bgp_check_withdrawal(struct bgp *bgp, struct bgp_dest *dest)
+{
+	struct bgp_path_info *pi;
+
+	if (!BGP_SUPPRESS_FIB_ENABLED(bgp))
+		return false;
+
+	for (pi = bgp_dest_get_bgp_path_info(dest); pi; pi = pi->next) {
+		if (CHECK_FLAG(pi->flags, BGP_PATH_SELECTED))
+			continue;
+
+		if (pi->sub_type != BGP_ROUTE_NORMAL)
+			return true;
+	}
+
+	if (CHECK_FLAG(dest->flags, BGP_NODE_FIB_INSTALLED))
+		return false;
+
+	return true;
+}
+
 /* called before bgp_process() */
 DECLARE_HOOK(bgp_process,
 	     (struct bgp * bgp, afi_t afi, safi_t safi, struct bgp_dest *bn,
@@ -633,6 +660,8 @@ extern struct bgp_dest *bgp_afi_node_get(struct bgp_table *table, afi_t afi,
 					 struct prefix_rd *prd);
 extern struct bgp_path_info *bgp_path_info_lock(struct bgp_path_info *path);
 extern struct bgp_path_info *bgp_path_info_unlock(struct bgp_path_info *path);
+extern struct bgp_path_info *
+bgp_get_imported_bpi_ultimate(struct bgp_path_info *info);
 extern void bgp_path_info_add(struct bgp_dest *dest, struct bgp_path_info *pi);
 extern void bgp_path_info_extra_free(struct bgp_path_info_extra **extra);
 extern void bgp_path_info_reap(struct bgp_dest *dest, struct bgp_path_info *pi);
@@ -773,6 +802,7 @@ extern int bgp_path_info_cmp_compatible(struct bgp *bgp,
 					struct bgp_path_info *exist,
 					char *pfx_buf, afi_t afi, safi_t safi,
 					enum bgp_path_selection_reason *reason);
+extern void bgp_attr_add_llgr_community(struct attr *attr);
 extern void bgp_attr_add_gshut_community(struct attr *attr);
 
 extern void bgp_best_selection(struct bgp *bgp, struct bgp_dest *dest,
@@ -784,7 +814,7 @@ extern bool bgp_zebra_has_route_changed(struct bgp_path_info *selected);
 
 extern void route_vty_out_detail_header(struct vty *vty, struct bgp *bgp,
 					struct bgp_dest *dest,
-					struct prefix_rd *prd, afi_t afi,
+					const struct prefix_rd *prd, afi_t afi,
 					safi_t safi, json_object *json);
 extern void route_vty_out_detail(struct vty *vty, struct bgp *bgp,
 				 struct bgp_dest *bn,

@@ -68,9 +68,6 @@ static const struct message attr_str[] = {
 	{BGP_ATTR_COMMUNITIES, "COMMUNITY"},
 	{BGP_ATTR_ORIGINATOR_ID, "ORIGINATOR_ID"},
 	{BGP_ATTR_CLUSTER_LIST, "CLUSTER_LIST"},
-	{BGP_ATTR_DPA, "DPA"},
-	{BGP_ATTR_ADVERTISER, "ADVERTISER"},
-	{BGP_ATTR_RCID_PATH, "RCID_PATH"},
 	{BGP_ATTR_MP_REACH_NLRI, "MP_REACH_NLRI"},
 	{BGP_ATTR_MP_UNREACH_NLRI, "MP_UNREACH_NLRI"},
 	{BGP_ATTR_EXT_COMMUNITIES, "EXT_COMMUNITIES"},
@@ -834,10 +831,6 @@ static void *bgp_attr_hash_alloc(void *p)
 	if (vnc_subtlvs)
 		bgp_attr_set_vnc_subtlvs(val, NULL);
 #endif
-	if (val->srv6_l3vpn)
-		val->srv6_l3vpn = NULL;
-	if (val->srv6_vpn)
-		val->srv6_vpn = NULL;
 
 	attr->refcnt = 0;
 	return attr;
@@ -1073,7 +1066,9 @@ struct attr *bgp_attr_aggregate_intern(
 		new = bgp_attr_intern(&attr);
 	}
 
-	aspath_unintern(&new->aspath);
+	/* Always release the 'intern()'ed AS Path. */
+	aspath_unintern(&attr.aspath);
+
 	return new;
 }
 

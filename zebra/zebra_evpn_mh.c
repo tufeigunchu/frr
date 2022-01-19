@@ -418,12 +418,8 @@ void zebra_evpn_es_evi_show(struct vty *vty, bool uj, int detail)
 	hash_iterate(zvrf->evpn_table, zebra_evpn_es_evi_show_one_evpn_hash_cb,
 			&wctx);
 
-	if (uj) {
-		vty_out(vty, "%s\n",
-			json_object_to_json_string_ext(
-				json_array, JSON_C_TO_STRING_PRETTY));
-		json_object_free(json_array);
-	}
+	if (uj)
+		vty_json(vty, json_array);
 }
 
 void zebra_evpn_es_evi_show_vni(struct vty *vty, bool uj, vni_t vni, int detail)
@@ -446,12 +442,8 @@ void zebra_evpn_es_evi_show_vni(struct vty *vty, bool uj, vni_t vni, int detail)
 			vty_out(vty, "VNI %d doesn't exist\n", vni);
 	}
 
-	if (uj) {
-		vty_out(vty, "%s\n",
-			json_object_to_json_string_ext(
-				json_array, JSON_C_TO_STRING_PRETTY));
-		json_object_free(json_array);
-	}
+	if (uj)
+		vty_json(vty, json_array);
 }
 
 /* Initialize the ES tables maintained per-L2_VNI */
@@ -998,12 +990,8 @@ void zebra_evpn_acc_vl_show(struct vty *vty, bool uj)
 	hash_iterate(zmh_info->evpn_vlan_table, zebra_evpn_acc_vl_show_hash,
 			&wctx);
 
-	if (uj) {
-		vty_out(vty, "%s\n",
-			json_object_to_json_string_ext(
-				json_array, JSON_C_TO_STRING_PRETTY));
-		json_object_free(json_array);
-	}
+	if (uj)
+		vty_json(vty, json_array);
 }
 
 void zebra_evpn_acc_vl_show_detail(struct vty *vty, bool uj)
@@ -1021,12 +1009,8 @@ void zebra_evpn_acc_vl_show_detail(struct vty *vty, bool uj)
 	hash_iterate(zmh_info->evpn_vlan_table, zebra_evpn_acc_vl_show_hash,
 			&wctx);
 
-	if (uj) {
-		vty_out(vty, "%s\n",
-			json_object_to_json_string_ext(
-				json_array, JSON_C_TO_STRING_PRETTY));
-		json_object_free(json_array);
-	}
+	if (uj)
+		vty_json(vty, json_array);
 }
 
 void zebra_evpn_acc_vl_show_vid(struct vty *vty, bool uj, vlanid_t vid)
@@ -1045,12 +1029,8 @@ void zebra_evpn_acc_vl_show_vid(struct vty *vty, bool uj, vlanid_t vid)
 			vty_out(vty, "VLAN %u not present\n", vid);
 	}
 
-	if (uj) {
-		vty_out(vty, "%s\n",
-			json_object_to_json_string_ext(
-				json, JSON_C_TO_STRING_PRETTY));
-		json_object_free(json);
-	}
+	if (uj)
+		vty_json(vty, json);
 }
 
 /* Initialize VLAN member bitmap on an interface. Although VLAN membership
@@ -1325,12 +1305,9 @@ static void zebra_evpn_es_l2_nh_show_entry(struct zebra_evpn_l2_nh *nh,
 {
 	if (json_array) {
 		json_object *json = NULL;
-		char ip_buf[INET6_ADDRSTRLEN];
 
 		json = json_object_new_object();
-		json_object_string_add(json, "vtep",
-				       inet_ntop(AF_INET, &nh->vtep_ip, ip_buf,
-						 sizeof(ip_buf)));
+		json_object_string_addf(json, "vtep", "%pI4", &nh->vtep_ip);
 		json_object_int_add(json, "nhId", nh->nh_id);
 		json_object_int_add(json, "refCnt", nh->ref_cnt);
 
@@ -1366,12 +1343,8 @@ void zebra_evpn_l2_nh_show(struct vty *vty, bool uj)
 
 	hash_iterate(zmh_info->nh_ip_table, zebra_evpn_l2_nh_show_cb, &wctx);
 
-	if (uj) {
-		vty_out(vty, "%s\n",
-			json_object_to_json_string_ext(
-				json_array, JSON_C_TO_STRING_PRETTY));
-		json_object_free(json_array);
-	}
+	if (uj)
+		vty_json(vty, json_array);
 }
 
 static struct zebra_evpn_l2_nh *zebra_evpn_l2_nh_find(struct in_addr vtep_ip)
@@ -3008,13 +2981,11 @@ static void zebra_evpn_es_json_vtep_fill(struct zebra_evpn_es *es,
 	struct listnode *node;
 	json_object *json_vtep_entry;
 	char alg_buf[EVPN_DF_ALG_STR_LEN];
-	char ip_buf[INET6_ADDRSTRLEN];
 
 	for (ALL_LIST_ELEMENTS_RO(es->es_vtep_list, node, es_vtep)) {
 		json_vtep_entry = json_object_new_object();
-		json_object_string_add(json_vtep_entry, "vtep",
-				       inet_ntop(AF_INET, &es_vtep->vtep_ip,
-						 ip_buf, sizeof(ip_buf)));
+		json_object_string_addf(json_vtep_entry, "vtep", "%pI4",
+					&es_vtep->vtep_ip);
 		if (es_vtep->flags & ZEBRA_EVPNES_VTEP_RXED_ESR) {
 			json_object_string_add(
 				json_vtep_entry, "dfAlgorithm",
@@ -3222,12 +3193,8 @@ void zebra_evpn_es_show(struct vty *vty, bool uj)
 	RB_FOREACH(es, zebra_es_rb_head, &zmh_info->es_rb_tree)
 		zebra_evpn_es_show_entry(vty, es, json_array);
 
-	if (uj) {
-		vty_out(vty, "%s\n",
-			json_object_to_json_string_ext(
-				json_array, JSON_C_TO_STRING_PRETTY));
-		json_object_free(json_array);
-	}
+	if (uj)
+		vty_json(vty, json_array);
 }
 
 void zebra_evpn_es_show_detail(struct vty *vty, bool uj)
@@ -3248,12 +3215,8 @@ void zebra_evpn_es_show_detail(struct vty *vty, bool uj)
 			json_object_array_add(json_array, json);
 	}
 
-	if (uj) {
-		vty_out(vty, "%s\n",
-			json_object_to_json_string_ext(
-				json_array, JSON_C_TO_STRING_PRETTY));
-		json_object_free(json_array);
-	}
+	if (uj)
+		vty_json(vty, json_array);
 }
 
 void zebra_evpn_es_show_esi(struct vty *vty, bool uj, esi_t *esi)
@@ -3276,12 +3239,8 @@ void zebra_evpn_es_show_esi(struct vty *vty, bool uj, esi_t *esi)
 		}
 	}
 
-	if (uj) {
-		vty_out(vty, "%s\n",
-			json_object_to_json_string_ext(
-				json, JSON_C_TO_STRING_PRETTY));
-		json_object_free(json);
-	}
+	if (uj)
+		vty_json(vty, json);
 }
 
 int zebra_evpn_mh_if_write(struct vty *vty, struct interface *ifp)

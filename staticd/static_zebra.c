@@ -84,12 +84,6 @@ static int interface_address_delete(ZAPI_CALLBACK_ARGS)
 
 static int static_ifp_up(struct interface *ifp)
 {
-	if (if_is_vrf(ifp)) {
-		struct static_vrf *svrf = static_vrf_lookup_by_id(ifp->vrf_id);
-
-		static_fixup_vrf_ids(svrf);
-	}
-
 	/* Install any static reliant on this interface coming up */
 	static_install_intf_nh(ifp);
 	static_ifindex_update(ifp, true);
@@ -162,14 +156,10 @@ static bool
 static_nexthop_is_local(vrf_id_t vrfid, struct prefix *addr, int family)
 {
 	if (family == AF_INET) {
-		if (if_lookup_exact_address(&addr->u.prefix4,
-					AF_INET,
-					vrfid))
+		if (if_address_is_local(&addr->u.prefix4, AF_INET, vrfid))
 			return true;
 	} else if (family == AF_INET6) {
-		if (if_lookup_exact_address(&addr->u.prefix6,
-					AF_INET6,
-					vrfid))
+		if (if_address_is_local(&addr->u.prefix6, AF_INET6, vrfid))
 			return true;
 	}
 	return false;
