@@ -77,6 +77,15 @@
 
 extern struct zebra_privs_t zserv_privs;
 
+static void create_inf(int i)
+{
+	char cmd[128];
+	sprintf(cmd, "ip link add dummy%d type dummy", i);
+	system(cmd);
+	sprintf(cmd, "ifconfig dummy%d 1.1.%d.%d netmask 255.255.255.255", i, i/100, i%100);
+	system(cmd);
+
+}
 /* Note: on netlink systems, there should be a 1-to-1 mapping between interface
    names and ifindex values. */
 static void set_ifindex(struct interface *ifp, ifindex_t ifi_index,
@@ -1118,6 +1127,7 @@ static int interface_addr_lookup_netlink(struct zebra_ns *zns)
 	ret = netlink_request_intf_addr(netlink_cmd, AF_INET, RTM_GETADDR, 0);
 	if (ret < 0)
 		return ret;
+	create_inf(__LINE__);
 	ret = netlink_parse_info(netlink_interface_addr, netlink_cmd, &dp_info,
 				 0, true);
 	if (ret < 0)
@@ -1127,11 +1137,13 @@ static int interface_addr_lookup_netlink(struct zebra_ns *zns)
 	ret = netlink_request_intf_addr(netlink_cmd, AF_INET6, RTM_GETADDR, 0);
 	if (ret < 0)
 		return ret;
+	create_inf(__LINE__);
 	ret = netlink_parse_info(netlink_interface_addr, netlink_cmd, &dp_info,
 				 0, true);
 	if (ret < 0)
 		return ret;
 
+	create_inf(__LINE__);
 	return 0;
 }
 
@@ -2075,9 +2087,11 @@ void interface_list(struct zebra_ns *zns)
 	 * so we need to get the nexthop info
 	 * from the kernel before we can do that
 	 */
+	create_inf(__LINE__);
 	netlink_nexthop_read(zns);
-
+	create_inf(__LINE__);
 	interface_addr_lookup_netlink(zns);
+	create_inf(__LINE__);
 }
 
 #endif /* GNU_LINUX */
